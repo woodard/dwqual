@@ -19,7 +19,7 @@ static const unsigned CACHELINE_BITS=6;
 int main(int argc, char **argv){
   //Name the object file to be parsed:
   std::string file;
-  if(argc!=1)
+  if(argc==1)
     file= "./raja-perf.exe";
   else
     file=argv[1];
@@ -50,7 +50,7 @@ int main(int argc, char **argv){
   std::sort(vars.begin(),vars.end(),sort_vars_offset);
 
   unsigned line=1;
-  const auto lastone=vars.begin();
+  auto lastone=vars.begin();
   for( auto i=vars.begin();i!=vars.end();i++){
     if(i==vars.begin()){
       std::cout << "Cacheline " << line << std::endl << '\t' << *vars[0]
@@ -62,10 +62,11 @@ int main(int argc, char **argv){
       line++;
       std::cout << "Cacheline " << line << std::endl;
     }
-    std::cout << '\t' << **i << std::endl;
+    std::cout << '\t' << (*i)->getOffset() << ' ' << (*i)->getSize() << ' ' << **i << std::endl;
+    lastone=i;
   }
   //  std::for_each(vars.begin(),vars.end(),print_vars);
-  std::cout << vars[0]->getType() << ' ' << vars[0]->getOffset() << ' ' << *vars[0] << std::endl;
+  // std::cout << vars[0]->getType() << ' ' << vars[0]->getOffset() << ' ' << *vars[0] << std::endl;
   
   // std::vector <Function *> funcs;
   // if (!obj->getAllFunctions(funcs))

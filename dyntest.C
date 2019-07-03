@@ -14,6 +14,8 @@
 using namespace Dyninst;
 using namespace SymtabAPI;
 
+static const unsigned CACHELINE_BITS=6;
+
 int main(int argc, char **argv){
   //Name the object file to be parsed:
   std::string file;
@@ -21,6 +23,7 @@ int main(int argc, char **argv){
     file= "./raja-perf.exe";
   else
     file=argv[1];
+  
 
   //Declare a pointer to an object of type Symtab; this represents the file.
   Symtab *obj = NULL;
@@ -55,7 +58,7 @@ int main(int argc, char **argv){
       continue;
     }
     // assumption cache lines are 64 bytes
-    if( (*lastone)->getOffset() >> 4 != (*i)->getOffset() >> 4){
+    if( (*lastone)->getOffset() >> CACHELINE_BITS != (*i)->getOffset() >> CACHELINE_BITS){
       line++;
       std::cout << "Cacheline " << line << std::endl;
     }

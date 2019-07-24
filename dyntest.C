@@ -5,6 +5,7 @@
 #include <ios>
 
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <dyninst/Symtab.h>
 #include <dyninst/Function.h>
@@ -14,18 +15,52 @@
 using namespace Dyninst;
 using namespace SymtabAPI;
 
-static const unsigned CACHELINE_BITS=6;
+static const unsigned CACHELINE_BITS=6; // assumption cache lines are 64 bytes
+// The initial size of the vector with cache lines in it.
 static const unsigned CLINE_SIZE=100;
+enum exit_codes {
+		 EXIT_OK=0,
+		 EXIT_ARGS=1,
+		 EXIT_MODULE=2,
+		 EXIT_NOFUNCS=3,
+		 EXIT_LFUNC=4,
+		 EXIT_LF_NOTUNIQ=5
+};
 
-static void print_type( localVar *lvar);
+static void print_type( Type *t);
+static void print_loclists( std::vector<VariableLocation> &ll);
 
 int main(int argc, char **argv){
   //Name the object file to be parsed:
   std::string file;
-  if(argc==1)
+  int opt;
+  bool dump_globals=false;
+  bool dump_functions=false;
+  bool dump_locals=false;
+  char *loc_fname;
+  
+  while ((opt = getopt(argc, argv, "fgl:")) != -1) {
+    switch (opt) {
+    case 'g':
+      dump_globals=true;
+      break;
+    case 'f':
+      dump_functions=true;
+      break;
+    case 'l':
+      dump_locals=true;
+      loc_fname=optarg;
+      break;
+    default: /* '?' */
+      std::cerr << "Usage:" << argv[0] << " [-g][-f][-l] name" << std::endl;
+      exit(EXIT_ARGS);
+    }
+  }
+
+  if(optind >= argc)
     file= "./raja-perf.exe";
   else
-    file=argv[1];
+    file=argv[optind];
   
 
   //Declare a pointer to an object of type Symtab; this represents the file.
@@ -34,59 +69,71 @@ int main(int argc, char **argv){
   bool err = Symtab::openFile(obj, file);
 
   if( err == false)
-    exit(1);
+    exit(EXIT_MODULE);
 
-  std::vector <Variable *> vars;
-  if (!obj->getAllVariables(vars))
-    exit(3);
+  if(dump_globals){
+    std::vector <Variable *> vars;
+    if (!obj->getAllVariables(vars))
+      /* XX Xunfortunately getAllVariables doesn't currently doesn't fetch any 
+	 variables that are not initialized. In most programs this would be 
+	 basically everything. 
+	 https://github.com/dyninst/dyninst/issues/619 */
+      exit(3);
 
-  auto sort_vars_offset = []( const auto &lhs, const auto &rhs){
-			    return lhs->getOffset() < rhs->getOffset(); };
-  std::sort(vars.begin(),vars.end(),sort_vars_offset);
+    auto sort_vars_offset = []( const auto &lhs, const auto &rhs){
+			      return lhs->getOffset() < rhs->getOffset(); };
+    std::sort(vars.begin(),vars.end(),sort_vars_offset);
 
-  unsigned line=0;
-  std::vector< std::vector< Variable *> > clines;
-  clines.resize(100);
-  auto lastone=vars.begin();
-  clines[0].push_back(*lastone);
-  for( auto i=vars.begin();i!=vars.end();i++){
-    if(i==vars.begin()){
-      // std::cout << "Cacheline " << line << std::endl << '\t' << *vars[0]
-      // 		<< std::endl;
-      continue;
-    }
-    // assumption cache lines are 64 bytes
-    if( (*lastone)->getOffset() >> CACHELINE_BITS != (*i)->getOffset() >> CACHELINE_BITS){
-      if(clines[line].size()==1)
-	clines[line].clear(); // this is an uncontested line
-      else{
-	line++;
-	// std::cout << "Cacheline " << line << std::endl;
+    unsigned line=0;
+    std::vector< std::vector< Variable *> > clines;
+    clines.resize(100);
+    auto lastone=vars.begin();
+    clines[0].push_back(*lastone);
+    for( auto i=vars.begin();i!=vars.end();i++){
+      if(i==vars.begin()){
+	// std::cout << "Cacheline " << line << std::endl << '\t' << *vars[0]
+	// 		<< std::endl;
+	continue;
       }
+
+      if( (*lastone)->getOffset() >> CACHELINE_BITS !=
+	  (*i)->getOffset() >> CACHELINE_BITS){
+	if(clines[line].size()==1)
+	  clines[line].clear(); // this is an uncontested line
+	else{
+	  line++;
+	  // std::cout << "Cacheline " << line << std::endl;
+	}
+      }
+      clines[line].push_back(*i);
+      // std::cout << '\t' << (*i)->getOffset() << ' ' << (*i)->getSize() << ' '
+      // 	      << **i << std::endl;
+      lastone=i;
     }
-    clines[line].push_back(*i);
-    // std::cout << '\t' << (*i)->getOffset() << ' ' << (*i)->getSize() << ' ' << **i << std::endl;
-    lastone=i;
-  }
-
   
-  auto print_vars = [](const auto& p){
-		      std::cout << p->getModule()->fullName() << ": " << std::hex
-				<< p->getOffset() << std::dec 
-				<< ' ' << p->getSize() << "b ";
-		      if(p->getType())
-			std::cout << p->getType()->getName();
-		      // else
-		      // 	std::cout << *p;
-		      std::cout << std::endl; };
-  std::for_each(clines.begin(), clines.end(),
-		[&print_vars] (const auto& v){
-		  if(!v.empty()){
-		    std::cout << std::endl;
-		    std::for_each(v.begin(),v.end(), print_vars);
-		  }
-		});
-
+    auto print_vars = [](const auto& p){
+			std::for_each(p->pretty_names_begin(),
+				      p->pretty_names_end(),
+				      [](const auto &a){
+					std::cout << a << ' ';});
+			std::cout << ": " << std::hex << p->getOffset()
+				  << std::dec << ' ' << p->getSize() << "b ";
+			if(p->getType()){
+			  std::cout << "\n\tType:";
+			  print_type(p->getType());
+			}
+			// std::cout << p->getType()->getName();		 
+			// else
+			// 	std::cout << *p;
+			std::cout << std::endl; };
+    std::for_each(clines.begin(), clines.end(),
+		  [&print_vars] (const auto& v){
+		    if(!v.empty()){
+		      std::cout << std::endl;
+		      std::for_each(v.begin(),v.end(), print_vars);
+		    }
+		  });
+  }
   // It looks like BSS variables are present but they are of unknown type.
   // https://github.com/dyninst/dyninst/issues/619
   
@@ -104,48 +151,140 @@ int main(int argc, char **argv){
   //  std::for_each(vars.begin(),vars.end(),print_vars);
   // std::cout << vars[0]->getType() << ' ' << vars[0]->getOffset() << ' ' << *vars[0] << std::endl;
   
-  std::vector <Function *> funcs;
-  // if (!obj->getAllFunctions(funcs))
-  //   exit(2);
-  // auto print_funcs = [](const auto& p){
-  // 		       std::cout << *(p->typed_names_begin()) << '\t'
-  // 				 << p->getName() << std::endl; };
-  // std::for_each(funcs.begin(),funcs.end(),print_funcs);
+  if(dump_functions){
+    std::vector <Function *> funcs;
+    if (!obj->getAllFunctions(funcs))
+      exit(EXIT_NOFUNCS);
+    auto print_funcs = [](const auto& p){
+			 std::cout << *(p->typed_names_begin()) << '\t'
+				   << p->getName() << std::endl; };
+    std::for_each(funcs.begin(),funcs.end(),print_funcs);
+  }
+  
+  if(dump_locals){
+    std::vector <Function *> funcs;
+    if (!obj->findFunctionsByName(funcs,loc_fname))
+      exit(EXIT_LFUNC);
+    if(funcs.size()!=1)
+      exit(EXIT_LF_NOTUNIQ);
+    std::vector <localVar *> lvars;
+    (*funcs.begin())->getParams(lvars);
+    auto num_params=lvars.size();
+    std::cout << "Number of params: " << num_params << std::endl;
 
-  funcs.clear();
-  if (!obj->findFunctionsByName(funcs,
-				"_ZN8rajaperf9polybench19POLYBENCH_JACOBI_2D9runKernelENS_9VariantIDE"))
-    exit(4);
-  if(funcs.size()!=1)
-    exit(5);
-  std::vector <localVar *> lvars;
-  (*funcs.begin())->getParams(lvars);
-  //  std::cout << params.size() << std::endl;
-  (*funcs.begin())->getLocalVariables(lvars);
-  std::cout << lvars.size() << std::endl;
-  std::for_each(lvars.begin(),lvars.end(),print_type);
-  exit(0);
+    // dyninst is asserting on this
+    if(lvars[0]->getType()->getDataClass()==dataTypedef){
+      auto t=lvars[0]->getType()->getTypedefType()->getConstituentType();
+      std::cout << t->getName() << t->getDataClass() << std::endl;
+      auto p=t->getPointerType()->getConstituentType();
+      std::cout << p->getName() << (p->getDataClass()==dataStructure)
+		<< std::endl;
+      auto s=p->getStructType();
+      std::cout << s << ' ' << s->getName() << std::endl;
+      auto vt=s->getComponents();
+    } 
+      
+    // (*funcs.begin())->getLocalVariables(lvars);
+    // std::cout << "Number of local_vars: " << lvars.size()-num_params
+    // 	      << std::endl;
+    // std::for_each(lvars.begin(),lvars.end(),
+    // 		  [](const auto &p){
+    // 		    Type *t=p->getType();
+    // 		    std::cout << p->getName() << '\t' << t->getName() << ' ';
+    // 		    print_type(t);
+    // 		    print_loclists(p->getLocationLists());}
+    // 		  );
+  }
+    
+  exit(EXIT_OK);
 }
 
-void print_type( localVar *lvar){
-  Type *t=lvar->getType();
-  std::cout << lvar->getName() << '\t' << t->getName() << ' ';
-  if(t->getDataClass()==dataTypedef)
+// This needs to be recursive somehow
+void print_type( Type *t){
+  switch(t->getDataClass()){
+  case dataTypedef:
     do{
       std::cout << "\n\ttypedef of "
 		<< t->getTypedefType()->getConstituentType()->getName() << ' ';
       t=t->getTypedefType()->getConstituentType();
     }while(t->getDataClass()==dataTypedef);
-  else
+    print_type(t);
+    break;
+  case dataArray:
+    {
+      typeArray *ta=t->getArrayType();
+      std::cout << "\n\tarray of " << ta->getBaseType()->getName()
+		<< "[" << ta->getLow() << ".." << ta->getHigh() << "]\n";
+    }
+    break;
+  case dataStructure:
+    {
+      auto fields=t->getStructType()->getComponents();      
+      std::cout << "Structure with " << fields->size() << " components\n";
+      std::for_each(fields->begin(),fields->end(),
+		   [](const auto &p){
+		     std::cout << "\t\t" << p->getName() << ' '
+			       << p->getOffset() << std::endl;
+		     print_type(p->getType());});
+    }
+    break;
+  case dataPointer:
+    std::cout << "Pointer to "
+	      << t->getPointerType()->getConstituentType()->getName();
+    print_type( t->getPointerType()->getConstituentType());
+    break;
+  case dataFunction:
+    std::cout << "Function Pointer";
+    break; 
+  default:
     std::cout << t->getDataClass();
-  std::cout << ' ' << t->getSize() << std::endl;
+  }
+  //  std::cout << ' ' << t->getSize() << 'b' << std::endl;
+  std::cout << std::endl;
+}
 
-  std::vector<VariableLocation> &ll=lvar->getLocationLists();
+void print_loclists( std::vector<VariableLocation> &ll){
   std::cout << "\tLocation Lists" << std::endl;
   std::for_each(ll.begin(),ll.end(),
 		[](const auto &p){
-		  std::cout << "\t\t" << p.stClass << ' ' << p.lowPC
-			    << ' ' << p.hiPC << std::endl;});
-  std::cout << std::endl;
-				      
+		  std::cout << "\t\t" << std::hex << p.lowPC
+			    << ' ' << p.hiPC << std::dec;
+		  const char *sclass;
+		  switch(p.stClass){
+		  case storageUnset:
+		    sclass="Unset";
+		    break;
+		  case storageAddr:
+		    sclass="Addr";
+		    break;
+		  case storageReg:
+		    sclass="Register";
+		    break;
+		  case storageRegOffset:
+		    sclass="RegOffset";
+		    break;
+		  default:
+		    exit(6);
+		  }
+		  // XXX handle unset properly
+		  const char *indirect=p.refClass==storageRef?"*":"";
+		  std::cout << ' ' << sclass << ' ';
+		  switch(p.stClass){
+		  case storageUnset:
+		    sclass="Unset";
+		    break;
+		  case storageAddr:
+		    std::cout << indirect << p.frameOffset;
+		    break;
+		  case storageReg:
+		    std::cout << indirect << p.mr_reg;
+		    break;
+		  case storageRegOffset:
+		    std::cout << indirect << '[' << "fp" << (p.frameOffset>0?"+":"") << p.frameOffset << ']';
+		    break;
+		  default:
+		    exit(6);
+		  }
+		  std::cout << std::endl;});
+  std::cout << std::endl;				      
 }

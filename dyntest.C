@@ -1,5 +1,6 @@
 #include <string>
 #include <vector>
+#include <set>
 #include <iostream>
 #include <algorithm>
 #include <ios>
@@ -24,7 +25,8 @@ enum exit_codes {
 		 EXIT_MODULE=2,
 		 EXIT_NOFUNCS=3,
 		 EXIT_LFUNC=4,
-		 EXIT_LF_NOTUNIQ=5
+		 EXIT_LF_NOTUNIQ=5,
+		 EXIT_GLOBALS=6
 };
 
 static void print_type( Type *t);
@@ -206,11 +208,7 @@ void print_loclists( std::vector<VariableLocation> &ll){
 void do_dump_globals(Symtab *obj){
   std::vector <Variable *> vars;
   if (!obj->getAllVariables(vars))
-    /* XX Xunfortunately getAllVariables doesn't currently doesn't fetch any 
-       variables that are not initialized. In most programs this would be 
-       basically everything. 
-       https://github.com/dyninst/dyninst/issues/619 */
-    exit(3);
+    exit(EXIT_GLOBALS);
 
   auto sort_vars_offset = []( const auto &lhs, const auto &rhs){
 			    return lhs->getOffset() < rhs->getOffset(); };
@@ -313,16 +311,81 @@ void do_dump_locals(Symtab *obj, char *loc_fname){
   // 		  );  
 }
 
-void do_dump_types(Symtab *obj){
-  obj->parseTypesNow();
+static void insert_types( std::set <Type *> &types, Type *p){
+  // Don't add duplicate, you'll ininitely recures.
+  if(p==NULL || types.find(p)!=types.end())
+    return;
+  // std::cout << p->getName();
+  types.insert(p);
+  switch(p->getDataClass()){
+  case dataPointer:
+    insert_types(types, p->getPointerType()->getConstituentType());
+    break;
+  case dataTypedef:
+    insert_types(types, p->getTypedefType()->getConstituentType());
+    break;
+  case dataReference:
+    insert_types(types, p->getRefType()->getConstituentType());
+    break;
+  case dataArray:
+    insert_types(types, p->getArrayType()->getBaseType());
+    break;
+  case dataStructure:
+    {
+      auto members=p->getStructType()->getComponents();
+      std::for_each(members->begin(),members->end(),
+		    [&types](const auto &mem){
+		      insert_types(types,mem->getType());});
+    }
+    break;
+  }
+  // std::cout << " done" << std::endl;
+}
+
+static void build_type_list(Symtab *obj, std::set <Type *> &types){
+    obj->parseTypesNow();
+  // these types are the general types used by fortran and they are not the
+  // structures needed for pahole kind of functionality
   auto stypes=obj->getAllstdTypes();
   auto btypes=obj->getAllbuiltInTypes();
   std::for_each(stypes->begin(),stypes->end(),
-		[](const auto &p){
-		  print_type(p);
-		});
+		[&types](const auto &p){insert_types(types,p);});
   std::for_each(btypes->begin(),btypes->end(),
+		[&types](const auto &p){insert_types(types,p);});
+
+  std::cerr << types.size() << ' ' << "vars\n";
+  std::vector <Variable *> vars;
+  if (!obj->getAllVariables(vars))
+    exit(EXIT_GLOBALS);
+  std::for_each(vars.begin(),vars.end(),
+		[&types](const auto &p){
+		  if(p->getType())
+		    insert_types(types,p->getType());});
+
+  std::vector <Function *> funcs;
+  if (!obj->getAllFunctions(funcs))
+    exit(EXIT_NOFUNCS);
+  auto accumulate_types=
+    [&types](const auto &fn){
+      std::vector <localVar *> lvars;
+      /* Even though the parameters are also local variables which may have 
+	 types don't inspect them and assume that the types being passed into
+	 them will be referenced elsewhere. This avoids a segv in dyninst when
+	 inspecting a this pointer */
+      // fn->getParams(lvars);
+      fn->getLocalVariables(lvars);
+      std::for_each(lvars.begin(),lvars.end(),
+		    [&types](const auto &p){
+		      if(p->getType())
+			insert_types(types,p->getType());});
+    };
+  std::for_each(funcs.begin(),funcs.end(),accumulate_types);
+}
+
+void do_dump_types(Symtab *obj){
+  std::set <Type *> types;
+  build_type_list(obj, types);
+  std::for_each(types.begin(),types.end(),
 		[](const auto &p){
-		  print_type(p);
-		});
+		  std::cout << p->getName() << ' ' << p->getSize() << std::endl;});
 }

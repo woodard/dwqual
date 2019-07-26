@@ -36,6 +36,7 @@ static void do_dump_globals(Symtab *obj);
 static void do_dump_functions(Symtab *obj);
 static void do_dump_locals(Symtab *obj, char *loc_fname);
 static void do_dump_types(Symtab *obj);
+static void do_pahole(Symtab *obj);
 
 int main(int argc, char **argv){
   //Name the object file to be parsed:
@@ -45,23 +46,28 @@ int main(int argc, char **argv){
   bool dump_functions=false;
   bool dump_locals=false;
   bool dump_types=false;
+  bool pahole=false;
   char *loc_fname;
   
-  while ((opt = getopt(argc, argv, "fgl:t")) != -1) {
+  while ((opt = getopt(argc, argv, "fgl:tp")) != -1) {
     switch (opt) {
-    case 'g':
-      dump_globals=true;
-      break;
     case 'f':
       dump_functions=true;
+      break;
+    case 'g':
+      dump_globals=true;
       break;
     case 'l':
       dump_locals=true;
       loc_fname=optarg;
       break;
+    case 'p':
+      pahole=true;
+      break;
     case 't':
       dump_types=true;
       break;
+
     default: /* '?' */
       std::cerr << "Usage:" << argv[0] << " [-g][-f][-l] name" << std::endl;
       exit(EXIT_ARGS);
@@ -110,7 +116,10 @@ int main(int argc, char **argv){
 
   if(dump_types)
     do_dump_types(obj);
-    
+
+  if(pahole)
+    do_pahole(obj);
+
   exit(EXIT_OK);
 }
 
@@ -353,7 +362,7 @@ static void build_type_list(Symtab *obj, std::set <Type *> &types){
   std::for_each(btypes->begin(),btypes->end(),
 		[&types](const auto &p){insert_types(types,p);});
 
-  std::cerr << types.size() << ' ' << "vars\n";
+  // std::cerr << types.size() << ' ' << "vars\n";
   std::vector <Variable *> vars;
   if (!obj->getAllVariables(vars))
     exit(EXIT_GLOBALS);
@@ -388,4 +397,35 @@ void do_dump_types(Symtab *obj){
   std::for_each(types.begin(),types.end(),
 		[](const auto &p){
 		  std::cout << p->getName() << ' ' << p->getSize() << std::endl;});
+}
+
+void do_pahole(Symtab *obj){
+  std::set <Type *> types;
+  build_type_list(obj, types);
+  std::cout << types.size() << " types\n";
+  // discard anything that isn't a structure
+  // Note: this is the proper way to delete elements from a set while iterating
+  // through it.
+  for( auto i=types.begin();i!=types.end(); ){
+    if( (*i)->getDataClass()!=dataStructure ||
+	(*i)->getSize() < (1<<CACHELINE_BITS) ){ // or is too short to be interesting
+      i=types.erase(i);
+      continue;
+    }
+    auto members=(*i)->getStructType()->getComponents();
+    std::cout << "class " << (*i)->getName() << ' ' << " {" << std::endl
+	      << "  // Size: " << (*i)->getSize() << ", Cachelines: "
+	      << ((*i)->getSize() >> CACHELINE_BITS)+1 << ", Members: "
+	      << members->size() << std::endl << std::endl;
+    std::for_each(members->begin(),members->end(),
+		  [&types](const auto &mem){
+		    // -1s are virtual functions ignore them for the moment
+		    if(mem->getOffset()!=-1)
+		      std::cout << "  " << mem->getType()->getName() << "\t\t"
+				<< mem->getName() << "; // " << mem->getOffset()
+				<< ' ' << mem->getType()->getSize() << std::endl;});
+    std::cout << "};" << std::endl << std::endl;
+    ++i;
+  }
+  // std::cout << types.size() << " structures\n";
 }

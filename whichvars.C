@@ -74,8 +74,13 @@ int main(int argc, char **argv){
     (*i)->getParams(lvars);
     (*i)->getLocalVariables(lvars);
     for(auto j=lvars.begin();j!=lvars.end();j++){
-      if(verbose)
-	cout << '\t' << (*j)->getName() << endl;
+      if(verbose) {
+	if( (*j)->getName()=="this")
+	  cout << "\tthis <" << (*j)->getType()->getName() << ">\n";
+	else
+	  cout << '\t' << (*j)->getName() << " [" << (*j)->getFileName() << ':'
+	       << (*j)->getLineNum() << "]\n";
+      }
       vector<VariableLocation> &lvlocs=(*j)->getLocationLists();
       for(auto k=lvlocs.begin();k!=lvlocs.end();k++){
 	discrete_interval<Address> addr_inter

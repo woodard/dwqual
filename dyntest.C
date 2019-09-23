@@ -320,6 +320,18 @@ void do_dump_locals(Symtab *obj, char *loc_fname){
   // 		  );  
 }
 
+void map_type_to_vars(Symtab *obj, std::multimap< Type*, localVar*> &map){
+  std::vector <Function *> funcs;
+  if (!obj->getAllFunctions(funcs))
+    exit(EXIT_NOFUNCS);
+  for( auto i=funcs.begin();i!=funcs.end();i++){
+    std::vector <localVar *> lvars;
+    (*i)->getLocalVariables(lvars);
+    std::for_each(lvars.begin(),lvars.end(),
+		  [&map](const auto &p){map.insert(std::make_pair(p->getType(),p));});
+  }
+}
+
 static void insert_types( std::set <Type *> &types, Type *p){
   // Don't add duplicate, you'll ininitely recures.
   if(p==NULL || types.find(p)!=types.end())
@@ -396,7 +408,8 @@ void do_dump_types(Symtab *obj){
   build_type_list(obj, types);
   std::for_each(types.begin(),types.end(),
 		[](const auto &p){
-		  std::cout << p->getName() << ' ' << p->getSize() << std::endl;});
+		  std::cout << p->getName() << ' ' << p->getSize()
+			    << std::endl;});
 }
 
 void do_pahole(Symtab *obj){
@@ -408,7 +421,8 @@ void do_pahole(Symtab *obj){
   // through it.
   for( auto i=types.begin();i!=types.end(); ){
     if( (*i)->getDataClass()!=dataStructure ||
-	(*i)->getSize() < (1<<CACHELINE_BITS) ){ // or is too short to be interesting
+	// or is too short to be interesting
+	(*i)->getSize() < (1<<CACHELINE_BITS) ){ 
       i=types.erase(i);
       continue;
     }
@@ -417,13 +431,16 @@ void do_pahole(Symtab *obj){
 	      << "  // Size: " << (*i)->getSize() << ", Cachelines: "
 	      << ((*i)->getSize() >> CACHELINE_BITS)+1 << ", Members: "
 	      << members->size() << std::endl << std::endl;
+
+    
     std::for_each(members->begin(),members->end(),
 		  [&types](const auto &mem){
 		    // -1s are virtual functions ignore them for the moment
 		    if(mem->getOffset()!=-1)
 		      std::cout << "  " << mem->getType()->getName() << "\t\t"
 				<< mem->getName() << "; // " << mem->getOffset()
-				<< ' ' << mem->getType()->getSize() << std::endl;});
+				<< ' ' << mem->getType()->getSize()
+				<< std::endl;});
     std::cout << "};" << std::endl << std::endl;
     ++i;
   }

@@ -66,73 +66,72 @@ int main(int argc, char **argv){
   vector <Function *> funcs;
   if (!obj->getAllFunctions(funcs))
     exit(EXIT_NOFUNCS);
-  for(auto i=funcs.begin();i!=funcs.end();i++){
+  for( auto i: funcs) {
     if(verbose)
-      cout << endl << "Func: " << (*i)->getName() << endl;
+      cout << endl << "Func: " << i->getName() << endl;
     //iterate through all the local variables and parameters
     vector <localVar *> lvars;
-    (*i)->getParams(lvars);
-    (*i)->getLocalVariables(lvars);
-    for(auto j=lvars.begin();j!=lvars.end();j++){
+    i->getParams(lvars);
+    i->getLocalVariables(lvars);
+    for(auto j: lvars) {
       if(verbose) {
-	if( (*j)->getName()=="this")
-	  cout << "\tthis <" << (*j)->getType()->getName() << ">\n";
+	if( j->getName()=="this")
+	  cout << "\tthis <" << j->getType()->getName() << ">\n";
 	else
-	  cout << '\t' << (*j)->getName() << " Defined: " << (*j)->getFileName() << ':'
-	       << (*j)->getLineNum() << endl;
+	  cout << '\t' << j->getName() << " Defined: " << j->getFileName()
+	       << ':'  << j->getLineNum() << endl;
       }
-      vector<VariableLocation> &lvlocs=(*j)->getLocationLists();
-      for(auto k=lvlocs.begin();k!=lvlocs.end();k++){
+      vector<VariableLocation> &lvlocs=j->getLocationLists();
+      for(auto k: lvlocs) {
 	discrete_interval<Address> addr_inter
 	  = construct<discrete_interval<Address> >
-	  ((*k).lowPC,(*k).hiPC,interval_bounds::closed());
+	  (k.lowPC,k.hiPC,interval_bounds::closed());
 	if(verbose){
-	  cout << "\t\t[" << (*k).lowPC;
+	  cout << "\t\t[" << k.lowPC;
 	  vector<Statement *> lines;
-	  if( (*i)->getModule()->getSourceLines(lines, (*k).lowPC))
-	    for(auto l=lines.begin(); l!=lines.end(); l++)
-	      cout << ' ' << (*l)->getFile() << ':' << (*l)->getLine() << 'c'
-		   << (*l)->getColumn();
+	  if( i->getModule()->getSourceLines(lines, k.lowPC))
+	    for(auto l:lines)
+	      cout << ' ' << l->getFile() << ':' << l->getLine() << 'c'
+		   << l->getColumn();
 	  lines.clear();
-	  cout << ',' << (*k).hiPC;
-	  if( (*i)->getModule()->getSourceLines( lines, (*k).hiPC))
-	      for(auto l=lines.begin(); l!=lines.end(); l++)
-		cout << ' ' << (*l)->getFile() << ':' << (*l)->getLine() << 'c'
-		     << (*l)->getColumn();
+	  cout << ',' << k.hiPC;
+	  if( i->getModule()->getSourceLines( lines, k.hiPC))
+	    for(auto l:lines)
+	      cout << ' ' << l->getFile() << ':' << l->getLine() << 'c'
+		   << l->getColumn();
 	  cout << ']' << endl;
 	}
 	LVarSet newone;
 	pair<localVar*,Function*> newpair;
-	newpair.first=*j;
-	newpair.second=*i;
+	newpair.first=j;
+	newpair.second=i;
 	newone.insert(newpair);
 	llmap.add(make_pair(addr_inter,newone));
       }
     }
   }
 
-  for(auto i=llmap.begin();i!=llmap.end();i++){
-    for( auto j=i->second.begin();j!=i->second.end();j++){
-      if(j==i->second.begin()){
-	cout << '[' << i->first.lower() << ' ';
-	vector<Statement *> lines;
-	if( (*j).second->getModule()->getSourceLines(lines,i->first.lower()))
-	    for(auto l=lines.begin(); l!=lines.end(); l++)
-	      cout << ' ' << (*l)->getFile() << ':' << (*l)->getLine() << 'c'
-		   << (*l)->getColumn();
-	lines.clear();
-	cout << ',' << i->first.upper() << ' ';
-	if( (*j).second->getModule()->getSourceLines(lines,i->first.upper()))
-	    for(auto l=lines.begin(); l!=lines.end(); l++)
-	      cout << ' ' << (*l)->getFile() << ':' << (*l)->getLine() << 'c'
-		   << (*l)->getColumn();
-	cout << ']' << ": " << endl;
-      }
-      if( (*j).first->getName()=="this")
-	cout << "\tthis <" << (*j).first->getType()->getName() << ">\n";
+  for(auto i: llmap) {
+    cout << '[' << i.first.lower() << ' ';
+    vector<Statement *> lines;
+    auto funcp=i.second.begin()->second;
+    if( funcp->getModule()->getSourceLines(lines, i.first.lower()))
+      for(auto l:lines)
+	cout << ' ' << l->getFile() << ':' << l->getLine() << 'c'
+	     << l->getColumn();
+    lines.clear();
+    cout << ',' << i.first.upper() << ' ';
+    if( funcp->getModule()->getSourceLines(lines, i.first.upper()))
+      for(auto l:lines)
+	cout << ' ' << l->getFile() << ':' << l->getLine() << 'c'
+	     << l->getColumn();
+    cout << ']' << ": " << endl;
+    for( auto j: i.second) {
+      if( j.first->getName()=="this")
+	cout << "\tthis <" << j.first->getType()->getName() << ">\n";
       else
-	cout << '\t' << (*j).first->getName() << " [" << (*j).first->getFileName() << ':'
-	     << (*j).first->getLineNum() << "]\n";
+	cout << '\t' << j.first->getName() << " [" << j.first->getFileName()
+	     << ':' << j.first->getLineNum() << "]\n";
     }
     cout << endl;
   }

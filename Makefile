@@ -27,7 +27,7 @@ whichvars.lto: whichvars.lto.o
 	c++ $(CXXFLAGS) $(GCCXXFLAGS) -O2 -flto -o whichvars.lto whichvars.lto.o -L /usr/lib64/dyninst -l symtabAPI -l tbb -l common
 
 whichvars.clang: whichvars.clang.o
-	clang++ $(CXXFLAGS) -O2 -flto -o whichvars.lto whichvars.lto.o -L /usr/lib64/dyninst -l symtabAPI -l tbb -l common
+	clang++ $(CXXFLAGS) -O2 -flto -o whichvars.clang whichvars.clang.o -L /usr/lib64/dyninst -l symtabAPI -l tbb -l common
 
 whichvars.O0.o: whichvars.C
 	c++ -O0 $(CXXFLAGS) $(GCCXXFLAGS) -c -o whichvars.O0.o whichvars.C
@@ -48,7 +48,7 @@ whichvars.lto.o: whichvars.C
 	c++ -O2 -flto $(CXXFLAGS) $(GCCXXFLAGS) -c -o whichvars.lto.o whichvars.C
 
 whichvars.clang.o: whichvars.C
-	clang++ -O2 -flto $(CXXFLAGS) -c -o whichvars.lto.o whichvars.C
+	clang++ -O2 -flto $(CXXFLAGS) -c -o whichvars.clang.o whichvars.C
 
 clean:
 	rm -f *.o dyntest dyntest-clang whichvars whichvars.o *~

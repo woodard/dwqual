@@ -60,7 +60,7 @@ int main(int argc, char **argv){
     exit(EXIT_MODULE);
 
   /*--------*/
-  typedef set<localVar*> LVarSet;
+  typedef set< pair<localVar*,Function*> > LVarSet;
   interval_map<Address, LVarSet> llmap;
   //iterate through all the functions
   vector <Function *> funcs;
@@ -68,7 +68,7 @@ int main(int argc, char **argv){
     exit(EXIT_NOFUNCS);
   for(auto i=funcs.begin();i!=funcs.end();i++){
     if(verbose)
-      cout << endl << (*i)->getName() << endl;
+      cout << endl << "Func: " << (*i)->getName() << endl;
     //iterate through all the local variables and parameters
     vector <localVar *> lvars;
     (*i)->getParams(lvars);
@@ -78,31 +78,62 @@ int main(int argc, char **argv){
 	if( (*j)->getName()=="this")
 	  cout << "\tthis <" << (*j)->getType()->getName() << ">\n";
 	else
-	  cout << '\t' << (*j)->getName() << " [" << (*j)->getFileName() << ':'
-	       << (*j)->getLineNum() << "]\n";
+	  cout << '\t' << (*j)->getName() << " Defined: " << (*j)->getFileName() << ':'
+	       << (*j)->getLineNum() << endl;
       }
       vector<VariableLocation> &lvlocs=(*j)->getLocationLists();
       for(auto k=lvlocs.begin();k!=lvlocs.end();k++){
 	discrete_interval<Address> addr_inter
 	  = construct<discrete_interval<Address> >
 	  ((*k).lowPC,(*k).hiPC,interval_bounds::closed());
-	if(verbose)
-	  cout << "\t\t" << addr_inter << endl;
+	if(verbose){
+	  cout << "\t\t[" << (*k).lowPC;
+	  vector<Statement *> lines;
+	  if( (*i)->getModule()->getSourceLines(lines, (*k).lowPC))
+	    for(auto l=lines.begin(); l!=lines.end(); l++)
+	      cout << ' ' << (*l)->getFile() << ':' << (*l)->getLine() << 'c'
+		   << (*l)->getColumn();
+	  lines.clear();
+	  cout << ',' << (*k).hiPC;
+	  if( (*i)->getModule()->getSourceLines( lines, (*k).hiPC))
+	      for(auto l=lines.begin(); l!=lines.end(); l++)
+		cout << ' ' << (*l)->getFile() << ':' << (*l)->getLine() << 'c'
+		     << (*l)->getColumn();
+	  cout << ']' << endl;
+	}
 	LVarSet newone;
-	newone.insert(*j);
+	pair<localVar*,Function*> newpair;
+	newpair.first=*j;
+	newpair.second=*i;
+	newone.insert(newpair);
 	llmap.add(make_pair(addr_inter,newone));
       }
     }
   }
 
   for(auto i=llmap.begin();i!=llmap.end();i++){
-    cout << i->first << ": " << endl;
-    for( auto j=i->second.begin();j!=i->second.end();j++)
-      if( (*j)->getName()=="this")
-	cout << "\tthis <" << (*j)->getType()->getName() << ">\n";
+    for( auto j=i->second.begin();j!=i->second.end();j++){
+      if(j==i->second.begin()){
+	cout << '[' << i->first.lower() << ' ';
+	vector<Statement *> lines;
+	if( (*j).second->getModule()->getSourceLines(lines,i->first.lower()))
+	    for(auto l=lines.begin(); l!=lines.end(); l++)
+	      cout << ' ' << (*l)->getFile() << ':' << (*l)->getLine() << 'c'
+		   << (*l)->getColumn();
+	lines.clear();
+	cout << ',' << i->first.upper() << ' ';
+	if( (*j).second->getModule()->getSourceLines(lines,i->first.upper()))
+	    for(auto l=lines.begin(); l!=lines.end(); l++)
+	      cout << ' ' << (*l)->getFile() << ':' << (*l)->getLine() << 'c'
+		   << (*l)->getColumn();
+	cout << ']' << ": " << endl;
+      }
+      if( (*j).first->getName()=="this")
+	cout << "\tthis <" << (*j).first->getType()->getName() << ">\n";
       else
-	cout << '\t' << (*j)->getName() << " [" << (*j)->getFileName() << ':'
-	     << (*j)->getLineNum() << "]\n";
+	cout << '\t' << (*j).first->getName() << " [" << (*j).first->getFileName() << ':'
+	     << (*j).first->getLineNum() << "]\n";
+    }
     cout << endl;
   }
 }

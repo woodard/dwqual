@@ -119,19 +119,25 @@ int main(int argc, char **argv){
       for(auto l:lines)
 	cout << ' ' << l->getFile() << ':' << l->getLine() << 'c'
 	     << l->getColumn();
-    lines.clear();
-    cout << ',' << i.first.upper() << ' ';
-    if( funcp->getModule()->getSourceLines(lines, i.first.upper()))
-      for(auto l:lines)
-	cout << ' ' << l->getFile() << ':' << l->getLine() << 'c'
-	     << l->getColumn();
+    if( i.first.lower() != i.first.upper()){
+      lines.clear();
+      cout << ',' << i.first.upper() << ' ';
+      if( funcp->getModule()->getSourceLines(lines, i.first.upper()))
+	for(auto l:lines)
+	  cout << ' ' << l->getFile() << ':' << l->getLine() << 'c'
+	       << l->getColumn();
+    }
     cout << ']' << ": " << endl;
     for( auto j: i.second) {
       if( j.first->getName()=="this")
 	cout << "\tthis <" << j.first->getType()->getName() << ">\n";
-      else
-	cout << '\t' << j.first->getName() << " [" << j.first->getFileName()
-	     << ':' << j.first->getLineNum() << "]\n";
+      else {
+	cout << '\t' << j.first->getName();
+	if( !j.first->getFileName().empty())
+	  cout << " [" << j.first->getFileName() << ':'
+	       << j.first->getLineNum() << ']';
+	cout << endl;
+      }
     }
     cout << endl;
   }

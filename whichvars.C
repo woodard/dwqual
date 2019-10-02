@@ -83,18 +83,26 @@ int main(int argc, char **argv){
       }
       vector<VariableLocation> &lvlocs=j->getLocationLists();
       for(auto k: lvlocs) {
+	// this unfortunately seems to be happening. It may either be a
+	// problem with the DWARF or a problem with dyninst.
+	if( k.lowPC == 0 || k.hiPC ==0xFFFFFFFFFFFFFFFF){
+	  cerr << "Location List for " << j->getName() << " from "
+	       << i->getName() << " seems insane [" << hex << k.lowPC << ','
+	       << k.hiPC << "]: skipping\n";
+	  continue;
+	}
 	discrete_interval<Address> addr_inter
 	  = construct<discrete_interval<Address> >
 	  (k.lowPC,k.hiPC,interval_bounds::closed());
 	if(verbose){
-	  cout << "\t\t[" << k.lowPC;
+	  cout << "\t\t[" << hex << k.lowPC << dec;
 	  vector<Statement *> lines;
 	  if( i->getModule()->getSourceLines(lines, k.lowPC))
 	    for(auto l:lines)
 	      cout << ' ' << l->getFile() << ':' << l->getLine() << 'c'
 		   << l->getColumn();
 	  lines.clear();
-	  cout << ',' << k.hiPC;
+	  cout << ',' << hex << k.hiPC << dec;
 	  if( i->getModule()->getSourceLines( lines, k.hiPC))
 	    for(auto l:lines)
 	      cout << ' ' << l->getFile() << ':' << l->getLine() << 'c'
@@ -112,7 +120,7 @@ int main(int argc, char **argv){
   }
 
   for(auto i: llmap) {
-    cout << '[' << i.first.lower() << ' ';
+    cout << '[' << hex << i.first.lower() << dec << ' ';
     vector<Statement *> lines;
     auto funcp=i.second.begin()->second;
     if( funcp->getModule()->getSourceLines(lines, i.first.lower()))
@@ -121,7 +129,8 @@ int main(int argc, char **argv){
 	     << l->getColumn();
     if( i.first.lower() != i.first.upper()){
       lines.clear();
-      cout << ',' << i.first.upper() << ' ';
+      cout << ',' << hex << i.first.upper() << dec <<
+	' ';
       if( funcp->getModule()->getSourceLines(lines, i.first.upper()))
 	for(auto l:lines)
 	  cout << ' ' << l->getFile() << ':' << l->getLine() << 'c'
@@ -130,7 +139,8 @@ int main(int argc, char **argv){
     cout << ']' << ": " << endl;
     for( auto j: i.second) {
       if( j.first->getName()=="this")
-	cout << "\tthis <" << j.first->getType()->getName() << ">\n";
+	cout << "\tthis <" << "Func:" << funcp->getName() << ' '
+	     << j.first->getType()->getName() << ">\n";
       else {
 	cout << '\t' << j.first->getName();
 	if( !j.first->getFileName().empty())

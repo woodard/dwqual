@@ -2,7 +2,7 @@ GCCXXFLAGS=-fvar-tracking-assignments -gstatement-frontiers -gvariable-location-
 CXXFLAGS=-g
 LDFLAGS=-L /usr/lib64/dyninst -l symtabAPI -l tbb -l common
 
-all: dyntest whichvars.O2 whichvars.lto whichvars.O0 whichvars.O1 whichvars.O3 whichvars.Og whichvars.clang
+all: dyntest whichvars.O2 whichvars.lto whichvars.O0 whichvars.O1 whichvars.O3 whichvars.Og whichvars.clang linemap
 
 dyntest: dyntest.o
 	c++ $(CXXFLAGS) $(GCCXXFLAGS) -o dyntest dyntest.o $(LDFLAGS)

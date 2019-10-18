@@ -143,7 +143,7 @@ int main(int argc, char **argv){
 	     << j.first->getType()->getName() << ">\n";
       else {
 	cout << '\t' << j.first->getName();
-	if( !j.first->getFileName().empty())
+	//	if( !j.first->getFileName().empty())
 	  cout << " [" << j.first->getFileName() << ':'
 	       << j.first->getLineNum() << ']';
 	cout << endl;

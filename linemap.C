@@ -32,6 +32,47 @@ enum exit_codes {
 		 EXIT_GLOBALS=6
 };
 
+static void warn_line_range( const string &filename, const string &funcname,
+		      const string &varname, int line, int size){
+  cerr << "DWARF Warning: " << funcname<< ':' << varname
+       << " line number out of range: " << filename << ' ' << line << '/'
+       << size << endl;
+}
+
+struct file_data{
+  string file_name;
+  bool inlined;
+  file_data( const string &f,bool i=false):file_name(f),inlined(i){}
+  file_data( const file_data &o){file_name=o.file_name;inlined=o.inlined;};
+  bool operator<(const file_data &o) const { return file_name<o.file_name;}
+  bool operator==(const file_data &o) const { return file_name<o.file_name;}
+};
+
+struct line_data{
+  string line;
+  set< localVar*> decls;
+  set< localVar*> avail;
+  line_data(string &l):line(l){}
+  line_data(){};
+};
+
+static bool read_file(std::map< string, vector<line_data > > &file_lines,
+		      const string &f){
+  ifstream inf(f);
+  if(inf.fail()){
+    cerr << "Error: Problem reading source file " << f << ". Skipping:"
+	 << strerror(errno) << endl;
+    inf.close();
+    return false;
+  }
+  file_lines.insert(pair<string,vector<line_data> >(f, vector<line_data>()));
+  string line;
+  while(getline(inf,line))
+    file_lines[f].push_back(line_data(line));
+  inf.close();
+  return true;
+}
+
 int main(int argc, char **argv){
   //Name the object file to be parsed:
   std::string file;
@@ -69,9 +110,14 @@ int main(int argc, char **argv){
   if (!obj->getAllFunctions(funcs))
     exit(EXIT_NOFUNCS);
 
-  set< string> files;
+  set< file_data> files;
   for( auto i: funcs) {
-    files.insert( i->getModule()->fullName());
+    if(!i->getModule()->fullName().empty()){
+      file_data newone(i->getModule()->fullName());
+      files.insert(newone);
+    } else
+      cerr << "DWARF Warning: Function " << i->getName() 
+	   << " has an empty filename in its module.\n";
     if(verbose)
       cout << endl << "Func: " << i->getName() << endl;
     //iterate through all the local variables and parameters
@@ -79,7 +125,11 @@ int main(int argc, char **argv){
     i->getParams(lvars);
     i->getLocalVariables(lvars);
     for(auto j: lvars) {
-      files.insert( j->getFileName());
+      if(!j->getFileName().empty())
+	files.insert( j->getFileName());
+      else
+	cerr << "DWARF Warning: Variable " << i->getName() << ':' << j->getName()
+	     << " has an empty filename.\n";
       if(verbose) {
 	if( j->getName()=="this")
 	  cout << "\tthis <" << j->getType()->getName() << ">\n";
@@ -92,9 +142,9 @@ int main(int argc, char **argv){
 	// this unfortunately seems to be happening. It may either be a
 	// problem with the DWARF or a problem with dyninst.
 	if( k.lowPC == 0 || k.hiPC ==0xFFFFFFFFFFFFFFFF){
-	  cerr << "Location List for " << j->getName() << " from "
+	  cerr << "DWARF Warning: Location List for " << j->getName() << " from "
 	       << i->getName() << " seems insane [" << hex << k.lowPC << ','
-	       << k.hiPC << "]: skipping\n";
+	       << k.hiPC << dec << "]: skipping\n";
 	  continue;
 	}
 	discrete_interval<Address> addr_inter
@@ -125,24 +175,10 @@ int main(int argc, char **argv){
     }
   }
 
-  struct line_data{
-    string line;
-    vector< localVar*> decls;
-    vector< localVar*> avail;
-    line_data(string &l):line(l){}
-    line_data(){};
-  };
-  
   // read in all the files
   std::map< string, vector<line_data > > file_lines;
-  for(auto f: files){
-    ifstream inf(f);
-    file_lines.insert(pair<string,vector<line_data> >(f,vector<line_data>()));
-    string line;
-    while(getline(inf,line))
-      file_lines[f].push_back(line_data(line));
-    inf.close();
-  }
+  for(auto f: files)
+    read_file(file_lines,f.file_name);
 
   // insert the variable declarations 
   for( auto i: funcs) {
@@ -151,26 +187,43 @@ int main(int argc, char **argv){
     i->getLocalVariables(lvars);
     for(auto j: lvars){
       auto line=j->getLineNum();
-      if(line==0){
+      if(file_lines.find(j->getFileName()) == file_lines.end()){
+	if(j->getFileName().empty()){
+	  cerr << "DWARF Warning: variable " << i->getName() << ':' << j->getName()
+	       << " dclared in a file with no name.\n";
+	  continue;
+	}
+	if(find(files.begin(),files.end(), j->getFileName()) == files.end()){
+	  cerr << "DWARF Warning: variable " << i->getName() << ':' << j->getName()
+	       << " declared in an unknown file " << j->getFileName() << ".\n";
+	  continue;
+	} 
 	cerr << "Warning: variable " << i->getName() << ':' << j->getName()
+	     << " declared in a file " << j->getFileName()
+	     << " that could not be read.\n";
+	continue;
+      }
+      if(line==0){
+	cerr << "DWARF Warning: variable " << i->getName() << ':' << j->getName()
 	     << " declared on line 0. skipping.\n";
 	continue;
       }
       if(line<0){
-	cerr << "Warning: variable " << i->getName() << ':' << j->getName()
+	cerr << "DWARF Warning: variable " << i->getName() << ':' << j->getName()
 	     << " declared on negative line number " << line << ". skipping.\n";
 	continue;
       }
       if(line>=file_lines[ j->getFileName()].size()){
-	cerr << "Warning: variable " << i->getName() << ':' << j->getName()
+	cerr << "DWARF Warning: variable " << i->getName() << ':' << j->getName()
 	     << " declared line number " << line << " but file only has "
-	     << file_lines[ j->getFileName()].size() << "lines. skipping.\n";
+	     << file_lines[ j->getFileName()].size() << " lines. skipping.\n";
 	continue;
       }
+
       // the linenum-1 because array indexes begin with 0 and line numbers
       // start at 1
       line--;
-      file_lines[ j->getFileName()][line].decls.push_back(j);
+      file_lines[ j->getFileName()][line].decls.insert(j);
     }
   }
   
@@ -181,75 +234,58 @@ int main(int argc, char **argv){
     // iterate through all the variables in that interval
     for( auto j: i.second){
       auto funcp=j.second;
-      vector<Statement *> low_lines,high_lines;
-      if( !funcp->getModule()->getSourceLines(low_lines, i.first.lower())){
-	cerr << "No line info for " << i.first.lower() << dec << endl;
-	continue;
-      }
-      if( !funcp->getModule()->getSourceLines(high_lines, i.first.upper())){
-	cerr << "No line info for " << i.first.upper() << dec << endl;
-	continue;
-      }
-
-      // I have no idea what to do if they aren't the same length
-      // I believe they are supposed to be parallel vectors
-      assert(low_lines.size() == high_lines.size());
-
-      for( auto idx=0;idx<low_lines.size();idx++){
-	auto &file=low_lines[idx]->getFile();
-	auto low_line=low_lines[idx]->getLine();
-	auto high_line=high_lines[idx]->getLine();
-
-	// lines are not in the same file
-	if(file.compare(high_lines[idx]->getFile()) != 0){
-	  // just mark the high line and low line. It is not a range.
-	  if(low_line >= 1 && low_line < file_lines[file].size())
-	    file_lines[file][low_line].avail.push_back(j.first);
-	  else
-	    cerr << "Warning: " << funcp->getName() << ':' << j.first->getName()
-		 << " line number out of range: " << low_line << '/'
-		 << file_lines[file].size() << endl;
-	  if(high_line >= 1 && high_line < file_lines[file].size())
-	    file_lines[file][high_line].avail.push_back(j.first);
-	  else
-	    cerr << "Warning: " << funcp->getName() << ':' << j.first->getName()
-		 << " line number out of range: " << high_line << '/'
-		 << file_lines[file].size() << endl;
-	}else{
-	  // mark the range
-	  for( auto cur_line=low_lines[idx]->getLine();
-	       cur_line<high_lines[idx]->getLine();
-	       cur_line++){
-	    if(cur_line >= 1 && cur_line < file_lines[file].size())
-	      file_lines[file][cur_line].avail.push_back(j.first);
-	    else
-	      cerr << "Warning: " << funcp->getName() << ':' << j.first->getName()
-		   << " line number out of range: " << cur_line << '/'
-		   << file_lines[file].size() << endl;
-	  }
+      for(auto pc = i.first.lower(); pc<=i.first.upper(); pc++){
+	std::vector<Statement *> lines;
+	if( !funcp->getModule()->getSourceLines(lines, pc)){
+	  cerr << "DWARF Warning: No line info for " << hex << i.first.lower() << dec
+	       << endl;
+	  continue;
 	}
-      } // all the lines for that interval
+	for( auto l: lines){
+	  // if we haven't read this file yet
+	  // we assume that it must be inlined because it is not a source file
+	  // for the CU where the function was defined.
+	  if(file_lines.find(l->getFile()) == file_lines.end()){
+	    if(read_file( file_lines, l->getFile()))
+	      files.insert( file_data(l->getFile(),true));
+	    else
+	      // if it is some source file that we can't read we can't do anything
+	      // anyway.
+	      continue;
+	  }
+	  auto line=l->getLine();
+	  if(line>= 1 && line <= file_lines[l->getFile()].size())
+	    file_lines[l->getFile()][line-1].avail.insert(j.first);
+	  else
+	    warn_line_range( l->getFile(), funcp->getName(), j.first->getName(),
+			     line, file_lines[l->getFile()].size());
+	} // the statements for that pc
+      } // the pc's 
     } // all the varibles within that interval
   } // each interval
 
   for( auto f: files){
-    cout << "***** " << f << "------" << endl;
-    for( auto l: file_lines[f]) {
-      cout << l.line;
+    if(f.inlined && !verbose)
+      continue;
+    cout << "***** " << f.file_name << "------" << endl;
+    unsigned lineno=1;
+    for( auto l: file_lines[f.file_name]) {
+      cout << lineno << ' ' << l.line << endl;
       if( l.decls.size()+l.avail.size() != 0){
-	cout << "// ";      
+	cout << "\t// ";      
 	if(l.decls.size() != 0){
-	  cout << "Decl: ";
+	  cout << " Decl: ";
 	  for( auto v: l.decls)
 	    cout << v->getName() << ' ';
 	}
 	if(l.avail.size() != 0){
-	  cout << "Avail: ";
+	  cout << " Avail: ";
 	  for( auto v: l.avail)
 	    cout << v->getName() << ' ';
 	}
 	cout << endl;
-      }
+      } // something more to print
+      lineno++;
     }
   }
 }

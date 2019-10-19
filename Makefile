@@ -58,7 +58,7 @@ whichvars.clang.o: whichvars.C
 	clang++ -O2 -flto $(CXXFLAGS) -c -o whichvars.clang.o whichvars.C
 
 clean:
-	rm -f *.o dyntest dyntest-clang whichvars whichvars.o *~
+	rm -f *.o dyntest dyntest-clang whichvars whichvars.o linemap.o linemap *~
 
 dyntest-clang.o: dyntest.C
 	clang++ -g -O2 -c dyntest.C -o dyntest-clang.o

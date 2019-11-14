@@ -1,8 +1,8 @@
 GCCXXFLAGS=-fvar-tracking-assignments -gstatement-frontiers -gvariable-location-views
-CXXFLAGS=-g3
+CXXFLAGS=-g3 -std=c++17
 LDFLAGS=-L /usr/lib64/dyninst -l symtabAPI -l tbb -l common
 
-all: dyntest whichvars.O2 whichvars.lto whichvars.O0 whichvars.O1 whichvars.O3 whichvars.Og whichvars.clang linemap
+all: dyntest whichvars.O2 whichvars.lto whichvars.O0 whichvars.O1 whichvars.O3 whichvars.Og whichvars.clang linemap linemap.clang
 
 dyntest: dyntest.o
 	c++ $(CXXFLAGS) $(GCCXXFLAGS) -o dyntest dyntest.o $(LDFLAGS)
@@ -14,6 +14,12 @@ linemap: linemap.o
 
 linemap.o: linemap.C
 	c++ -O2 -flto $(CXXFLAGS) $(GCCXXFLAGS) -c -o linemap.o linemap.C  $(LDFLAGS)
+
+linemap.clang: linemap.clang.o
+	clang++ -O2 $(CXXFLAGS) -o linemap.clang linemap.clang.o $(LDFLAGS)
+
+linemap.clang.o: linemap.C
+	clang++ -O2 $(CXXFLAGS) -c -o linemap.clang.o linemap.C
 
 whichvars.O0: whichvars.O0.o
 	c++  $(CXXFLAGS) $(GCCXXFLAGS) -O0 -o whichvars.O0 whichvars.O0.o $(LDFLAGS)
@@ -34,7 +40,7 @@ whichvars.lto: whichvars.lto.o
 	c++ $(CXXFLAGS) $(GCCXXFLAGS) -O2 -flto -o whichvars.lto whichvars.lto.o $(LDFLAGS)
 
 whichvars.clang: whichvars.clang.o
-	clang++ $(CXXFLAGS) -O2 -flto -o whichvars.clang whichvars.clang.o $(LDFLAGS)
+	clang++ $(CXXFLAGS) -O2 -o whichvars.clang whichvars.clang.o $(LDFLAGS)
 
 whichvars.O0.o: whichvars.C
 	c++ -O0 $(CXXFLAGS) $(GCCXXFLAGS) -c -o whichvars.O0.o whichvars.C
@@ -55,7 +61,7 @@ whichvars.lto.o: whichvars.C
 	c++ -O2 -flto $(CXXFLAGS) $(GCCXXFLAGS) -c -o whichvars.lto.o whichvars.C
 
 whichvars.clang.o: whichvars.C
-	clang++ -O2 -flto $(CXXFLAGS) -c -o whichvars.clang.o whichvars.C
+	clang++ -O2 $(CXXFLAGS) -c -o whichvars.clang.o whichvars.C
 
 clean:
 	rm -f *.o dyntest dyntest-clang whichvars whichvars.o linemap.o linemap *~

@@ -135,7 +135,7 @@ int main(int argc, char **argv){
 	    << i->getModule()->fullName() << endl;
       if( i->getModule()->language() == lang_Unknown){
 	*errfile << "DWARF Warning: " << i->getModule()->fullName()
-	     << " is of unknown type. Skipping.\n";
+		 << " is of unknown type. Skipping.\n";
 	continue;
       }
       files.insert(i->getModule()->fullName());
@@ -153,8 +153,8 @@ int main(int argc, char **argv){
 	// *errfile << "v Inserting: " << j->getFileName() << endl;
 	files.insert( j->getFileName());
       }else
-	*errfile << "DWARF Warning: Variable " << i->getName() << ':' << j->getName()
-	     << " has an empty filename.\n";
+	*errfile << "DWARF Warning: Variable " << i->getName() << ':'
+		 << j->getName() << " has an empty filename.\n";
       if(verbose) {
 	if( j->getName()=="this")
 	  cout << "\tthis <" << j->getType()->getName() << ">\n";
@@ -167,9 +167,9 @@ int main(int argc, char **argv){
 	// this unfortunately seems to be happening. It may either be a
 	// problem with the DWARF or a problem with dyninst.
 	if( k.lowPC == 0 || k.hiPC ==0xFFFFFFFFFFFFFFFF){
-	  *errfile << "DWARF Warning: Location List for " << j->getName() << " from "
-	       << i->getName() << " seems insane [" << hex << k.lowPC << ','
-	       << k.hiPC << dec << "]: skipping\n";
+	  *errfile << "DWARF Warning: Location List for " << j->getName()
+		   << " from " << i->getName() << " seems insane [" << hex
+		   << k.lowPC << ',' << k.hiPC << dec << "]: skipping\n";
 	  continue;
 	}
 	if( k.lowPC < i->getOffset() || k.hiPC > i->getOffset()+i->getSize()){
@@ -223,46 +223,49 @@ int main(int argc, char **argv){
       auto line=j->getLineNum();
       if(file_lines.find(j->getFileName()) == file_lines.end()){
 	if(j->getFileName().empty()){
-	  *errfile << "DWARF Warning: variable " << i->getName() << ':' << j->getName()
-	       << " declared in a file with no name.\n";
+	  *errfile << "DWARF Warning: variable " << i->getName() << ':'
+		   << j->getName() << " declared in a file with no name.\n";
 	  continue;
 	}
 	if(find(files.begin(),files.end(), j->getFileName()) == files.end()){
-	  *errfile << "DWARF Warning: variable " << i->getName() << ':' << j->getName()
-	       << " declared in an unknown file " << j->getFileName() << ".\n";
+	  *errfile << "DWARF Warning: variable " << i->getName() << ':'
+		   << j->getName() << " declared in an unknown file "
+		   << j->getFileName() << ".\n";
 	  continue;
 	} 
 	*errfile << "Warning: variable " << i->getName() << ':' << j->getName()
-	     << " declared in a file " << j->getFileName()
-	     << " that could not be read.\n";
+		 << " declared in a file " << j->getFileName()
+		 << " that could not be read.\n";
 	continue;
       }
       if(i->getModule()->fullName() != j->getFileName()){
 	string basename=j->getFileName().substr( j->getFileName().rfind('/')+1);
 	if( basename == i->getModule()->fullName()){
 	  *errfile << "Dyninst bug: module.fullName() missing path for "
-	       << j->getFileName() << ".\n";
+		   << j->getFileName() << ".\n";
 	}else {
-	  *errfile << "DWARF Warning: " << j->getName() << " is from " << i->getName()
-	       << " in CU " << i->getModule()->fullName() << " but was declared in "
-	       << j->getFileName() << ".\n";
+	  *errfile << "DWARF Warning: " << j->getName() << " is from "
+		   << i->getName() << " in CU " << i->getModule()->fullName()
+		   << " but was declared in " << j->getFileName() << ".\n";
 	}
       }
       if(line==0){
-	*errfile << "DWARF Warning: variable " << i->getName() << ':' << j->getName()
-	     << " declared on line 0. skipping.\n";
+	*errfile << "DWARF Warning: variable " << i->getName() << ':'
+		 << j->getName() << " declared on line 0. skipping.\n";
 	continue;
       }
       if(line<0){
-	*errfile << "DWARF Warning: variable " << i->getName() << ':' << j->getName()
-	     << " declared on negative line number " << line << ". skipping.\n";
+	*errfile << "DWARF Warning: variable " << i->getName() << ':'
+		 << j->getName() << " declared on negative line number " << line
+		 << ". skipping.\n";
 	continue;
       }
       if(line>=file_lines[ j->getFileName()].size()){
-	*errfile << "DWARF Warning: variable " << i->getName() << ':' << j->getName()
-	     << " declared line number " << line << " but file " << j->getFileName()
-	     <<  " only has "
-	     << file_lines[ j->getFileName()].size() << " lines. skipping.\n";
+	*errfile << "DWARF Warning: variable " << i->getName() << ':'
+		 << j->getName() << " declared line number " << line
+		 << " but file " << j->getFileName() <<  " only has "
+		 << file_lines[ j->getFileName()].size()
+		 << " lines. skipping.\n";
 	continue;
       }
 
@@ -283,8 +286,8 @@ int main(int argc, char **argv){
       for(auto pc = i.first.lower(); pc<=i.first.upper(); pc++){
 	std::vector<Statement *> lines;
 	if( !funcp->getModule()->getSourceLines(lines, pc)){
-	  *errfile << "DWARF Warning: No line info for " << hex << i.first.lower() << dec
-	       << endl;
+	  *errfile << "DWARF Warning: No line info for " << hex
+		   << i.first.lower() << dec << endl;
 	  continue;
 	}
 	for( auto l: lines){
@@ -293,12 +296,13 @@ int main(int argc, char **argv){
 	  // for the CU where the function was defined.
 	  if(file_lines.find(l->getFile()) == file_lines.end()){
 	    if(verbose)
-	      *errfile << "Info: pulling in unreferenced file " << l->getFile() << endl;
+	      *errfile << "Info: pulling in unreferenced file " << l->getFile()
+		       << endl;
 	    if(read_file( file_lines, l->getFile()))
 	      files.insert( file_data(l->getFile(),true));
 	    else
-	      // if it is some source file that we can't read we can't do anything
-	      // anyway.
+	      // if it is some source file that we can't read we can't do
+	      // anything anyway.
 	      continue;
 	  }
 	  auto line=l->getLine();

@@ -81,9 +81,10 @@ int main(int argc, char **argv){
   int opt;
   bool verbose=false;
   bool quiet=false;
+  bool machine=false;
   errfile=&cerr;
   
-  while ((opt = getopt(argc, argv, "vwq")) != -1) {
+  while ((opt = getopt(argc, argv, "vwqm")) != -1) {
     switch (opt) {
     case 'v':
       verbose=true;
@@ -91,6 +92,9 @@ int main(int argc, char **argv){
     case 'w':
       errfile=&cout;
       quiet=true;
+      break;
+    case 'm':
+      machine=true;
       break;
     case 'q':{
       quiet=true;
@@ -127,8 +131,8 @@ int main(int argc, char **argv){
   set< file_data> files;
   for( auto i: funcs) {
     if(!i->getModule()->fullName().empty()){
-      // cerr << "f " << i->getName() << " Inserting: "
-      // << i->getModule()->fullName() << endl;
+       cerr << "f " << i->getName() << " Inserting: "
+	    << i->getModule()->fullName() << endl;
       if( i->getModule()->language() == lang_Unknown){
 	*errfile << "DWARF Warning: " << i->getModule()->fullName()
 	     << " is of unknown type. Skipping.\n";
@@ -312,13 +316,16 @@ int main(int argc, char **argv){
     for( auto f: files){
       if(f.inlined && !verbose)
 	continue;
-      cout << "***** " << f.file_name << "------" << endl;
-      unsigned lineno=1;
+      if(!machine)
+	cout << "***** " << f.file_name << "------" << endl;
+      unsigned lineno=0;
       for( auto l: file_lines[f.file_name]) {
-	cout << lineno << ' ' << l.line << endl;
-	if( l.decls.size()+l.avail.size() != 0){
-	  cout << "\t// ";
-	  if(l.decls.size() != 0){
+	lineno++;
+	if(!machine){
+	  cout << lineno << ' ' << l.line << endl;
+	  if( l.decls.size()+l.avail.size() != 0){
+	    cout << "\t// ";
+	    if(l.decls.size() != 0){
 	      cout << " Decl: ";
 	      for( auto v: l.decls)
 		cout << v->getName() << ' ';
@@ -328,9 +335,25 @@ int main(int argc, char **argv){
 	      for( auto v: l.avail)
 		cout << v->getName() << ' ';
 	    }
-	    cout << endl;
-	} // something more to print
-	lineno++;
-      }
-    }
+	  }
+	  cout << endl;
+	} else { //machine readable
+	  if( l.decls.size()+l.avail.size()==0)
+	    continue;
+	  cout << f.file_name << ':' << lineno << ' ';
+	  if(l.decls.size() != 0){
+	    cout << " D: ";
+	    for( auto v: l.decls)
+	      cout << v->getName() << ' ';
+	  }
+	  if(l.avail.size() != 0){
+	    cout << " A: ";
+	    for( auto v: l.avail)
+	      cout << v->getName() << ' ';
+	  }
+	  cout << endl;
+	} // machine readable or not
+      } // more lines in the file
+    } // more files
+  // not quiet
 }

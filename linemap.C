@@ -340,7 +340,7 @@ int main(int argc, char **argv){
 		cout << v->getName() << ' ';
 	    }
 	  }
-	  cout << endl;
+	  // cout << endl;
 	} else { //machine readable
 	  if( l.decls.size()+l.avail.size()==0)
 	    continue;

@@ -14,6 +14,7 @@
 
 #include <boost/icl/interval_map.hpp>
 
+#include <getopt.h>
 #include <unistd.h>
 
 using namespace Dyninst;
@@ -75,16 +76,35 @@ static bool read_file(std::map< string, vector<line_data > > &file_lines,
   return true;
 }
 
+static void usage( ostream &os, char *prog_name){
+      os << "Usage:" << prog_name << " [-v][-w][-q][-m] name" << std::endl
+	 << "\t-v | --verbose" << std::endl
+	 << "\t-w | --warnings DWARF warnings-only" << std::endl
+	 << "\t-m | --machine-readable" << std::endl
+	 << "\t-q | --quiet" << std::endl;
+}
+
 int main(int argc, char **argv){
   //Name the object file to be parsed:
   std::string file;
   int opt;
+  static struct option long_options[] =
+    {
+     {"verbose", no_argument, 0, 'v'},
+     {"warnings", no_argument, 0, 'w'},
+     {"machine-readable", no_argument, 0, 'm'},
+     {"quiet", no_argument, 0, 'q'},
+     {"help", no_argument, 0, '?'},
+     {0, 0, 0, 0 }
+    };
+  int option_index = 0;
+
   bool verbose=false;
   bool quiet=false;
   bool machine=false;
   errfile=&cerr;
   
-  while ((opt = getopt(argc, argv, "vwqm")) != -1) {
+  while ((opt = getopt_long(argc, argv, "vwqm", long_options, &option_index)) != -1) {
     switch (opt) {
     case 'v':
       verbose=true;
@@ -101,8 +121,11 @@ int main(int argc, char **argv){
       errfile=new ofstream("/dev/null");
       break;
     }
+    case '?':
+      usage(std::cout, argv[0]);
+      exit(EXIT_OK);
     default:
-      std::cerr << "Usage:" << argv[0] << " [-v][-w][-q] name" << std::endl;
+      usage(std::cerr, argv[0]);
       exit(EXIT_ARGS);
     }
   }
